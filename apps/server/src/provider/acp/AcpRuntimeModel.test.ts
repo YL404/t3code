@@ -127,6 +127,31 @@ describe("AcpRuntimeModel", () => {
     expect(modelConfigId).toBe("primary_model");
   });
 
+  it("ignores a boolean option when resolving the model option", () => {
+    const modelConfigId = extractModelConfigId({
+      sessionId: "session-1",
+      configOptions: [
+        {
+          id: "model",
+          name: "Model Toggle",
+          category: "model",
+          type: "boolean",
+          currentValue: true,
+        },
+        {
+          id: "model_selector",
+          name: "Model",
+          category: "model",
+          type: "select",
+          currentValue: "a",
+          options: [{ value: "a", name: "A" }],
+        },
+      ],
+    } satisfies EffectAcpSchema.NewSessionResponse);
+
+    expect(modelConfigId).toBe("model_selector");
+  });
+
   it("detects Grok session replay updates from _meta.isReplay", () => {
     expect(
       sessionUpdateIsReplay({

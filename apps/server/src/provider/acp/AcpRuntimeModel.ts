@@ -421,13 +421,14 @@ type AcpToolCallUpdate = Extract<
  * `category` is a UX hint, and agents may label more than one option "model"
  * (Cline tags its auth-provider selector that way), so prefer the
  * conventional "model" id before falling back to the first model-category
- * option.
+ * select option.
  */
 export function findModelConfigOption(
   configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption> | null | undefined,
 ): EffectAcpSchema.SessionConfigOption | undefined {
   const modelOptions = (configOptions ?? []).filter(
-    (option) => option.category === "model" && option.id.trim().length > 0,
+    (option) =>
+      option.type === "select" && option.category === "model" && option.id.trim().length > 0,
   );
   return modelOptions.find((option) => option.id.trim() === "model") ?? modelOptions[0];
 }
