@@ -69,6 +69,64 @@ describe("AcpRuntimeModel", () => {
     expect(modelConfigId).toBe("model");
   });
 
+  it("prefers the model id option when another model-category option comes first", () => {
+    // Cline 3.0.68 tags its auth-provider selector `category: "model"` and
+    // emits it before the real model option, so category alone must not decide
+    // which option a selected model is written to.
+    const modelConfigId = extractModelConfigId({
+      sessionId: "session-1",
+      configOptions: [
+        {
+          id: "provider",
+          name: "Provider",
+          category: "model",
+          type: "select",
+          currentValue: "cline",
+          options: [
+            { value: "cline", name: "Cline" },
+            { value: "cline-pass", name: "Cline Pass" },
+          ],
+        },
+        {
+          id: "model",
+          name: "Model",
+          category: "model",
+          type: "select",
+          currentValue: "deepseek/deepseek-v4.1-flash",
+          options: [{ value: "deepseek/deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash" }],
+        },
+      ],
+    } satisfies EffectAcpSchema.NewSessionResponse);
+
+    expect(modelConfigId).toBe("model");
+  });
+
+  it("falls back to the first model-category option when none is named model", () => {
+    const modelConfigId = extractModelConfigId({
+      sessionId: "session-1",
+      configOptions: [
+        {
+          id: "primary_model",
+          name: "Primary Model",
+          category: "model",
+          type: "select",
+          currentValue: "a",
+          options: [{ value: "a", name: "A" }],
+        },
+        {
+          id: "secondary_model",
+          name: "Secondary Model",
+          category: "model",
+          type: "select",
+          currentValue: "b",
+          options: [{ value: "b", name: "B" }],
+        },
+      ],
+    } satisfies EffectAcpSchema.NewSessionResponse);
+
+    expect(modelConfigId).toBe("primary_model");
+  });
+
   it("detects Grok session replay updates from _meta.isReplay", () => {
     expect(
       sessionUpdateIsReplay({

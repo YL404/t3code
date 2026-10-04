@@ -416,15 +416,24 @@ type AcpToolCallUpdate = Extract<
   { readonly sessionUpdate: "tool_call" | "tool_call_update" }
 >;
 
+/**
+ * Resolves the session config option that drives model selection. ACP's
+ * `category` is a UX hint, and agents may label more than one option "model"
+ * (Cline tags its auth-provider selector that way), so prefer the
+ * conventional "model" id before falling back to the first model-category
+ * option.
+ */
+export function findModelConfigOption(
+  configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption> | null | undefined,
+): EffectAcpSchema.SessionConfigOption | undefined {
+  const modelOptions = (configOptions ?? []).filter(
+    (option) => option.category === "model" && option.id.trim().length > 0,
+  );
+  return modelOptions.find((option) => option.id.trim() === "model") ?? modelOptions[0];
+}
+
 export function extractModelConfigId(sessionResponse: AcpSessionSetupResponse): string | undefined {
-  const configOptions = sessionResponse.configOptions;
-  if (!configOptions) return undefined;
-  for (const opt of configOptions) {
-    if (opt.category === "model" && opt.id.trim().length > 0) {
-      return opt.id.trim();
-    }
-  }
-  return undefined;
+  return findModelConfigOption(sessionResponse.configOptions)?.id.trim();
 }
 
 export function findSessionConfigOption(

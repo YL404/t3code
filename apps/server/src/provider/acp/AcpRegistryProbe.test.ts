@@ -195,6 +195,50 @@ describe("ACP Registry probe", () => {
     expect(result.currentModelId).toBe("sonnet");
   });
 
+  it("keeps non-model model-category options out of the model catalog", () => {
+    // Cline 3.0.68 labels its auth-provider selector `category: "model"` and
+    // emits it before the real model option. Provider values must not surface
+    // as models, and the current model must come from the model option.
+    const result = acpRegistryProbeResult(instanceId, {
+      sessionId: "probe-session",
+      initializeResult: { protocolVersion: 1 },
+      sessionSetupResult: {
+        sessionId: "probe-session",
+        configOptions: [
+          {
+            id: "provider",
+            name: "Provider",
+            category: "model",
+            type: "select",
+            currentValue: "cline-pass",
+            options: [
+              { value: "cline", name: "Cline" },
+              { value: "cline-pass", name: "Cline Pass" },
+            ],
+          },
+          {
+            id: "model",
+            name: "Model",
+            category: "model",
+            type: "select",
+            currentValue: "deepseek/deepseek-v4.1-flash",
+            options: [
+              { value: "deepseek/deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash" },
+              { value: "gpt-5.4", name: "GPT-5.4" },
+            ],
+          },
+        ],
+      },
+      modelConfigId: "model",
+    } satisfies AcpSessionRuntimeStartResult);
+
+    expect(result.models).toEqual([
+      { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash", description: null },
+      { id: "gpt-5.4", name: "GPT-5.4", description: null },
+    ]);
+    expect(result.currentModelId).toBe("deepseek/deepseek-v4.1-flash");
+  });
+
   it("omits overlong opaque model ids instead of publishing mutated ids", () => {
     const result = acpRegistryProbeResult(instanceId, {
       sessionId: "probe-session",

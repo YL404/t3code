@@ -25,7 +25,7 @@ import type * as EffectAcpSchema from "effect-acp/compat";
 
 import * as PtyAdapter from "../../terminal/PtyAdapter.ts";
 import * as AcpRegistrySupport from "./AcpRegistrySupport.ts";
-import { parseSessionModeState } from "./AcpRuntimeModel.ts";
+import { findModelConfigOption, parseSessionModeState } from "./AcpRuntimeModel.ts";
 import { acpProviderOptionDescriptors } from "./AcpSessionConfig.ts";
 import * as AcpRegistryRuntimeCoordinator from "./AcpRegistryRuntimeCoordinator.ts";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
@@ -58,19 +58,18 @@ export function normalizeAcpRegistryWebUrl(value: string): string | undefined {
 function modelConfigOptions(
   configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption> | null | undefined,
 ): ReadonlyArray<EffectAcpSchema.SessionConfigSelectOption> {
-  return (configOptions ?? []).flatMap((option) => {
-    if (option.category !== "model" || option.type !== "select") return [];
-    return option.options.flatMap((candidate) =>
-      "value" in candidate ? [candidate] : candidate.options,
-    );
-  });
+  const modelOption = findModelConfigOption(configOptions);
+  if (modelOption?.type !== "select") return [];
+  return modelOption.options.flatMap((candidate) =>
+    "value" in candidate ? [candidate] : candidate.options,
+  );
 }
 
 function normalizeModels(
   configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption> | null | undefined,
 ): ReadonlyArray<AcpRegistryProbeModel> {
-  // Model discovery is the model config option's base models; ACP has no
-  // other portable model inventory.
+  // Model discovery is the resolved model config option's base models; ACP has
+  // no other portable model inventory.
   const candidates = modelConfigOptions(configOptions).map((model) => ({
     id: model.value,
     name: model.name,
@@ -178,9 +177,7 @@ export function normalizeAcpRegistryLiveConfiguration(
   configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption>,
   modeState?: Parameters<typeof acpProviderOptionDescriptors>[0]["modeState"],
 ): AcpRegistryLiveConfiguration {
-  const modelOption = configOptions.find(
-    (option) => option.category === "model" && option.type === "select",
-  );
+  const modelOption = findModelConfigOption(configOptions);
   const boundedCurrentModelId =
     modelOption?.type === "select"
       ? (boundedOpaqueValue(modelOption.currentValue, MAX_ID_LENGTH) ?? null)
