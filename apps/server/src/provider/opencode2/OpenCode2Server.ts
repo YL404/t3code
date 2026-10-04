@@ -9,10 +9,12 @@ import type { OpenCodeClient } from "@opencode/client/effect";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Base64Url from "effect/encoding/Base64Url";
 import * as Layer from "effect/Layer";
 import * as P from "effect/Predicate";
 import * as Redacted from "effect/Redacted";
+import * as Stream from "effect/Stream";
 import * as HttpClientError from "effect/http/HttpClientError";
 
 import { OpenCodeRuntimeError } from "../opencodeRuntime.ts";
@@ -134,6 +136,50 @@ export const verifyServer = (client: OpenCodeClient) =>
     Effect.map((info) => info.version),
   );
 
+/** How long a spawned server has to settle its model catalog before it is lent out anyway. */
+const CATALOG_SETTLE_TIMEOUT = "5 seconds";
+
+/**
+ * A freshly spawned OpenCode 2 server builds its model catalog lazily, and
+ * until the build finishes it answers `model.list` with default names instead
+ * of the instance's configured ones. The directory's `model.updated` event
+ * marks the settled catalog, so subscribe, read once to start the build, and
+ * wait for that event. A server that cannot be subscribed to, that fails the
+ * read, or that never emits the event is still lent once the timeout passes.
+ */
+export const settleModelCatalog = <ReadA, ReadE, StreamE, EventsE>(input: {
+  readonly directory: string;
+  readonly read: Effect.Effect<ReadA, ReadE>;
+  readonly events: Effect.Effect<
+    Stream.Stream<OpenCode2Client.OpenCode2StreamEvent, StreamE>,
+    EventsE
+  >;
+}): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const events = yield* input.events.pipe(Effect.option);
+    // Wait from a child fiber, so every exit — the read failing or the deadline
+    // arriving sooner — interrupts the subscription and releases the response.
+    const settled =
+      events._tag === "Some"
+        ? yield* events.value.pipe(
+            Stream.filter(
+              (event) =>
+                "location" in event &&
+                event.type === "model.updated" &&
+                event.location?.directory === input.directory,
+            ),
+            Stream.take(1),
+            Stream.runDrain,
+            Effect.ignore,
+            Effect.asVoid,
+            Effect.forkChild({ startImmediately: true }),
+          )
+        : undefined;
+    const read = yield* input.read.pipe(Effect.option);
+    if (settled === undefined || read._tag === "None") return;
+    yield* Fiber.join(settled);
+  }).pipe(Effect.timeoutOption(CATALOG_SETTLE_TIMEOUT), Effect.ignore, Effect.asVoid);
+
 /**
  * One server per provider instance. With a `serverUrl` it connects to that
  * server with the configured password; otherwise it spawns `binaryPath serve`
@@ -153,6 +199,16 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
     Effect.gen(function* () {
       const api = yield* opencode.connect({ baseUrl: url, password });
       const version = yield* verifyServer(api.client);
+      // A server T3 spawned is lent only after its catalog reflects the
+      // instance's configured model names; an external one was not started
+      // here, and waiting on its event stream would only cost latency.
+      if (!external) {
+        yield* settleModelCatalog({
+          directory: input.directory,
+          read: api.client.model.list({ location: { directory: input.directory } }),
+          events: api.events,
+        });
+      }
       return { ...api, url, version, external } satisfies OpenCode2Connection;
     });
   let latest: OpenCode2Connection | undefined;
